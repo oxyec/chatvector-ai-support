@@ -17,7 +17,7 @@ app = FastAPI()
 
 @app.get("/")
 def read_root():
-    return {"message": "DocTalk AI Backend is Live!"}
+    return {"message": "ChatVector AI Backend is Live!"}
 
 load_dotenv()  # Loads from .env file
 
@@ -36,7 +36,7 @@ def test_db():
         return {"error": str(e)}
 
 
-def get_embedding(text: str) -> list:
+async def get_embedding(text: str) -> list:
     """Get embedding vector using Google's embedding model"""
     for attempt in range(3): # Retry up to 3 times on failure
         try: 
@@ -51,8 +51,8 @@ def get_embedding(text: str) -> list:
             if "429" in error_msg or "quota" in error_msg and attempt < 2:
                 wait_time = (attempt + 1) * 10
                 print(f"Rate limit exceeded, retrying... (attempt {attempt + 1})")
-                import time
-                time.sleep(wait_time)  # Exponential backoff
+              
+                await asyncio.sleep(wait_time)  # Exponential backoff
             else:
                 print(f"Error getting embedding: {e}")
                 return [0.0] * 768 # Return a zero vector on failure
@@ -87,7 +87,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     print(f"Extracted {len(file_text)} characters from TXT")   
     # 3. Chunk text with LangChain
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=2000, # chunk size can be change as needed based on use case and model limits
+        chunk_size=1000, # chunk size can be change as needed based on use case and model limits
         chunk_overlap=200 # overlap to maintain context between chunks 
     )
     chunks = text_splitter.split_text(file_text)
@@ -109,7 +109,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     for i, chunk in enumerate(chunks):
         if i > 0:
             await asyncio.sleep(2)  # To avoid rate limits
-        embedding = get_embedding(chunk)
+        embedding = await get_embedding(chunk)
         if not any(embedding): # Check for zero vector indicating an error
             print(f"  Skipping chunk {i+1} due to embedding error")
             continue
@@ -139,7 +139,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         "chunk_count": len(chunks),
         "document_id": document_id,
         "stored_chunks": stored_chunks,
-        "message": "PDF successfully processed and stored in database!"
+        "message": "File successfully processed and stored in database!"
     }
 
 @app.post("/chat")
@@ -148,7 +148,7 @@ async def chat_with_document(question: str, document_id: str):
     print(f"querying document: {document_id}")
     
     # 1. embed the question
-    question_embedding = get_embedding(question)
+    question_embedding = await get_embedding(question)
     print(f"🧠 Question embedded with {len(question_embedding)} dimensions")
     
     # 2. locate similar chunks using vector search
